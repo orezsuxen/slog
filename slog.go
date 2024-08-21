@@ -31,7 +31,7 @@ func runner(progName string, progArgs string, sub chan string) tea.Cmd {
 		//read prog output
 		buf := bufio.NewReader(out)
 		for {
-			line, err := buf.ReadBytes(255) //TODO: should be read bytes
+			line, _, err := buf.ReadLine() //TODO: should be read bytes
 			if err == io.EOF {
 				return progDoneMsg{}
 			}
@@ -64,10 +64,11 @@ func newModel() model {
 }
 
 func (m model) Init() tea.Cmd {
-	return tea.Batch(runner("ls", "-a", m.sub), waitforProgResponse(m.sub))
+	return tea.Batch(runner("./counter", " 50 100", m.sub), waitforProgResponse(m.sub))
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+
 	var cmds []tea.Cmd
 
 	switch msg := msg.(type) {
@@ -78,12 +79,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case progMsg:
 		*m.result = string(msg) //TODO: make func for it
+		cmds = append(cmds, waitforProgResponse(m.sub))
 
 	case progErrMsg:
 		*m.result = fmt.Sprintf("ERROR:", msg.err.Error()) //TODO: error handling
 
 	case progDoneMsg:
-		*m.result = fmt.Sprint("Done. Press ^C to exit.")
+		*m.result = fmt.Sprint("Done. Press q or ^C or esc to exit.")
 	}
 
 	return m, tea.Batch(cmds...)
