@@ -1,86 +1,103 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
+	"io"
 	"os"
+	"os/exec"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-type model struct {
-	choices  []string
-	cursor   int
-	selected map[int]struct{}
+type progMsg string
+
+type progErrMsg struct{ err error }
+
+type progDoneMsg struct{}
+
+func runner(progName string, progArgs string, sub chan string) tea.Cmd {
+	return func() tea.Msg {
+		//setup
+		cmd := exec.Command(progName, progArgs)
+		out, err := cmd.StdoutPipe()
+		if err != nil {
+			return progErrMsg{err}
+		}
+		//execution
+		if err := cmd.Start(); err != nil {
+			return progErrMsg{err}
+		}
+		//read prog output
+		buf := bufio.NewReader(out)
+		for {
+			line, err := buf.ReadBytes(255) //TODO: should be read bytes
+			if err == io.EOF {
+				return progDoneMsg{}
+			}
+			if err != nil {
+				return progErrMsg{err}
+			}
+
+			sub <- string(line)
+		}
+	}
 }
 
-func initiaModel() model {
-	return model{
-		choices:  []string{"choice one", "choice two", "choice three"},
-		selected: make(map[int]struct{}),
+func waitforProgResponse(sub chan string) tea.Cmd {
+	return func() tea.Msg {
+		return progMsg(<-sub)
 	}
+}
+
+type model struct {
+	sub    chan string
+	result *string
+}
+
+func newModel() model {
+	m := model{
+		sub:    make(chan string),
+		result: new(string),
+	}
+	return m
 }
 
 func (m model) Init() tea.Cmd {
-	return nil
+	return tea.Batch(runner("ls", "-a", m.sub), waitforProgResponse(m.sub))
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmds []tea.Cmd
+
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
-		case "ctrl+c", "q":
+		case "q", "ctrl+c", "esc":
 			return m, tea.Quit
-
-		case "up", "k":
-			if m.cursor > 0 {
-				m.cursor -= 1
-			}
-
-		case "down", "j":
-			if m.cursor < len(m.choices)-1 {
-				m.cursor += 1
-			}
-
-		case "enter", " ":
-			_, ok := m.selected[m.cursor]
-			if ok {
-				delete(m.selected, m.cursor)
-
-			} else {
-				m.selected[m.cursor] = struct{}{}
-			}
 		}
+	case progMsg:
+		*m.result = string(msg) //TODO: make func for it
+
+	case progErrMsg:
+		*m.result = fmt.Sprintf("ERROR:", msg.err.Error()) //TODO: error handling
+
+	case progDoneMsg:
+		*m.result = fmt.Sprint("Done. Press ^C to exit.")
 	}
 
-	return m, nil
+	return m, tea.Batch(cmds...)
 
 }
 
 func (m model) View() string {
-	s := "this is the header text !!\n"
-
-	for i, choice := range m.choices {
-		cursor := " "
-		if m.cursor == i {
-			cursor = ">"
-		}
-
-		checked := " "
-		if _, ok := m.selected[i]; ok {
-			checked = "x"
-		}
-		s += fmt.Sprintf("%s [%s] %s\n", cursor, checked, choice)
-	}
-	s += "\nPress q to quir.\n"
-
-	return s
-
+	return *m.result
 }
 
 func main() {
-	p := tea.NewProgram(initiaModel())
+	p := tea.NewProgram(newModel())
 	if _, err := p.Run(); err != nil {
-		fmt.Printf("we done fucked up: %v", err)
+		fmt.Println("dangit", err)
 		os.Exit(1)
 	}
 }
