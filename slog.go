@@ -16,10 +16,10 @@ type progErrMsg struct{ err error }
 
 type progDoneMsg struct{}
 
-func runner(progName string, progArgs string, sub chan string) tea.Cmd {
+func runner(progName string, progArgs []string, sub chan string) tea.Cmd {
 	return func() tea.Msg {
 		//setup
-		cmd := exec.Command(progName, progArgs)
+		cmd := exec.Command(progName, progArgs...)
 		out, err := cmd.StdoutPipe()
 		if err != nil {
 			return progErrMsg{err}
@@ -64,7 +64,7 @@ func newModel() model {
 }
 
 func (m model) Init() tea.Cmd {
-	return tea.Batch(runner("./counter", " 50 100", m.sub), waitforProgResponse(m.sub))
+	return tea.Batch(runner("./counterdir/counter", []string{"50", "100"}, m.sub), waitforProgResponse(m.sub))
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
