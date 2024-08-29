@@ -16,6 +16,13 @@ type progErrMsg struct{ err error }
 
 type progDoneMsg struct{}
 
+func checkRunning(cmd *exec.Cmd) bool {
+	if cmd == nil || cmd.ProcessState != nil && cmd.ProcessState.Exited() || cmd.Process == nil {
+		return false
+	}
+	return true
+}
+
 func runner(progName string, progArgs []string, sub chan string) tea.Cmd {
 	return func() tea.Msg {
 		//setup
@@ -24,6 +31,7 @@ func runner(progName string, progArgs []string, sub chan string) tea.Cmd {
 		if err != nil {
 			return progErrMsg{err}
 		}
+		cmd.Stdin = os.Stdin
 		//execution
 		if err := cmd.Start(); err != nil {
 			return progErrMsg{err}
@@ -32,7 +40,7 @@ func runner(progName string, progArgs []string, sub chan string) tea.Cmd {
 		buf := bufio.NewReader(out)
 		for {
 			line, _, err := buf.ReadLine() //TODO: should be read bytes
-			if err == io.EOF {
+			if err == io.EOF || !checkRunning(cmd) {
 				return progDoneMsg{}
 			}
 			if err != nil {
@@ -52,19 +60,19 @@ func waitforProgResponse(sub chan string) tea.Cmd {
 
 type model struct {
 	sub    chan string
-	result *string
+	result string
 }
 
 func newModel() model {
 	m := model{
-		sub:    make(chan string),
-		result: new(string),
+		sub: make(chan string),
+		// result: new(string),
 	}
 	return m
 }
 
 func (m model) Init() tea.Cmd {
-	return tea.Batch(runner("./counterdir/counter", []string{"50", "100"}, m.sub), waitforProgResponse(m.sub))
+	return tea.Batch(runner("./mirrordir/mirror", []string{}, m.sub), waitforProgResponse(m.sub))
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -78,14 +86,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 	case progMsg:
-		*m.result = string(msg) //TODO: make func for it
+		m.result = string(msg) //TODO: make func for it
 		cmds = append(cmds, waitforProgResponse(m.sub))
 
 	case progErrMsg:
-		*m.result = fmt.Sprintf("ERROR:", msg.err.Error()) //TODO: error handling
+		m.result = fmt.Sprintf("ERROR:", msg.err.Error()) //TODO: error handling
 
 	case progDoneMsg:
-		*m.result = fmt.Sprint("Done. Press q or ^C or esc to exit.")
+		m.result = fmt.Sprint("Prog execution Done.\nPress q or ^C or esc to exit.")
 	}
 
 	return m, tea.Batch(cmds...)
@@ -93,7 +101,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) View() string {
-	return *m.result
+	return m.result
 }
 
 func main() {
