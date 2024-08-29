@@ -58,7 +58,10 @@ func waitforProgResponse(sub chan string) tea.Cmd {
 	}
 }
 
+//REM: ===== MODEL =====
+
 type model struct {
+	done   bool
 	sub    chan string
 	result string
 }
@@ -81,18 +84,23 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		switch msg.String() {
-		case "q", "ctrl+c", "esc":
-			return m, tea.Quit
+		if m.done { // ignore input while prog is running
+			switch msg.String() {
+			case "q", "ctrl+c", "esc":
+				return m, tea.Quit
+			}
 		}
 	case progMsg:
-		m.result = string(msg) //TODO: make func for it
+		m.result = "Prog is running:\n----------\n"
+		m.result += string(msg)
 		cmds = append(cmds, waitforProgResponse(m.sub))
 
 	case progErrMsg:
+		m.done = true
 		m.result = fmt.Sprintf("ERROR:", msg.err.Error()) //TODO: error handling
 
 	case progDoneMsg:
+		m.done = true
 		m.result = fmt.Sprint("Prog execution Done.\nPress q or ^C or esc to exit.")
 	}
 
