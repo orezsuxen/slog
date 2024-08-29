@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 
+	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -61,26 +62,42 @@ func waitforProgResponse(sub chan string) tea.Cmd {
 //REM: ===== MODEL =====
 
 type model struct {
-	done   bool
-	sub    chan string
-	result string
+	done bool
+	sub  chan string
+
+	result     string
+	progResult string
+
+	spin spinner.Model
 }
 
 func newModel() model {
+	s := spinner.New()
+	s.Spinner = spinner.Line
 	m := model{
-		sub: make(chan string),
+		sub:  make(chan string),
+		spin: s,
 		// result: new(string),
 	}
 	return m
 }
 
 func (m model) Init() tea.Cmd {
-	return tea.Batch(runner("./mirrordir/mirror", []string{}, m.sub), waitforProgResponse(m.sub))
+	return tea.Batch(
+		runner("./mirrordir/mirror", []string{}, m.sub),
+		waitforProgResponse(m.sub),
+		m.spin.Tick,
+	)
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	var cmds []tea.Cmd
+	var cmd tea.Cmd
+
+	if !m.done { // while prog is running
+		m.result = "Prog is running:\n"
+	}
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
@@ -91,17 +108,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 	case progMsg:
-		m.result = "Prog is running:\n----------\n"
-		m.result += string(msg)
+		m.progResult = string(msg)
 		cmds = append(cmds, waitforProgResponse(m.sub))
 
 	case progErrMsg:
 		m.done = true
-		m.result = fmt.Sprintf("ERROR:", msg.err.Error()) //TODO: error handling
+		m.progResult = fmt.Sprintf("ERROR slog:", msg.err.Error()) //TODO: error handling
 
 	case progDoneMsg:
 		m.done = true
 		m.result = fmt.Sprint("Prog execution Done.\nPress q or ^C or esc to exit.")
+	default:
+		m.spin, cmd = m.spin.Update(msg)
+		cmds = append(cmds, cmd)
 	}
 
 	return m, tea.Batch(cmds...)
@@ -109,6 +128,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) View() string {
+	if !m.done {
+		m.result += m.spin.View()
+		m.result += "\n"
+		m.result += m.progResult
+	}
 	return m.result
 }
 
