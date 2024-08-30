@@ -24,7 +24,7 @@ func checkRunning(cmd *exec.Cmd) bool {
 	return true
 }
 
-func runner(progName string, progArgs []string, sub chan string) tea.Cmd {
+func runner(progName string, progArgs []string, fromProg chan string, toProg chan bool) tea.Cmd {
 	return func() tea.Msg {
 		//setup
 		cmd := exec.Command(progName, progArgs...)
@@ -40,30 +40,44 @@ func runner(progName string, progArgs []string, sub chan string) tea.Cmd {
 		//read prog output
 		buf := bufio.NewReader(out)
 		for {
-			line, _, err := buf.ReadLine() //TODO: should be read bytes
-			if err == io.EOF || !checkRunning(cmd) {
-				return progDoneMsg{}
-			}
-			if err != nil {
-				return progErrMsg{err}
+			select {
+			case <-toProg:
+				cmd.Process.Kill()
+				// return progDoneMsg{} //TEST:
+			default:
+				line, _, err := buf.ReadLine() //TODO: should be read bytes
+				if err == io.EOF || !checkRunning(cmd) {
+					return progDoneMsg{}
+				}
+				if err != nil {
+					return progErrMsg{err}
+				}
+				fromProg <- string(line)
 			}
 
-			sub <- string(line)
 		}
 	}
 }
 
-func waitforProgResponse(sub chan string) tea.Cmd {
+func waitforProgResponse(fromProg chan string) tea.Cmd {
 	return func() tea.Msg {
-		return progMsg(<-sub)
+		return progMsg(<-fromProg)
+	}
+}
+
+func terminateProg(toProg chan bool) tea.Cmd {
+	return func() tea.Msg {
+		toProg <- true
+		return true
 	}
 }
 
 //REM: ===== MODEL =====
 
 type model struct {
-	done bool
-	sub  chan string
+	done     bool
+	fromProg chan string
+	toProg   chan bool
 
 	result     string
 	progResult string
@@ -75,8 +89,9 @@ func newModel() model {
 	s := spinner.New()
 	s.Spinner = spinner.Line
 	m := model{
-		sub:  make(chan string),
-		spin: s,
+		fromProg: make(chan string),
+		toProg:   make(chan bool),
+		spin:     s,
 		// result: new(string),
 	}
 	return m
@@ -84,8 +99,8 @@ func newModel() model {
 
 func (m model) Init() tea.Cmd {
 	return tea.Batch(
-		runner("./mirrordir/mirror", []string{}, m.sub),
-		waitforProgResponse(m.sub),
+		runner("./counterdir/counter", []string{"1000", "10"}, m.fromProg, m.toProg),
+		waitforProgResponse(m.fromProg),
 		m.spin.Tick,
 	)
 }
@@ -96,7 +111,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 
 	if !m.done { // while prog is running
-		m.result = "Prog is running:\n"
+		m.result = "Prog is running: press ^C to kill\n"
 	}
 
 	switch msg := msg.(type) {
@@ -106,14 +121,20 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "q", "ctrl+c", "esc":
 				return m, tea.Quit
 			}
+		} else {
+			switch msg.String() {
+			case "ctrl+c":
+				cmds = append(cmds, terminateProg(m.toProg))
+
+			}
 		}
 	case progMsg:
 		m.progResult = string(msg)
-		cmds = append(cmds, waitforProgResponse(m.sub))
+		cmds = append(cmds, waitforProgResponse(m.fromProg))
 
 	case progErrMsg:
 		m.done = true
-		m.progResult = fmt.Sprintf("ERROR slog:", msg.err.Error()) //TODO: error handling
+		m.result = fmt.Sprintf("ERROR slog:", msg.err.Error()) //TODO: error handling
 
 	case progDoneMsg:
 		m.done = true
