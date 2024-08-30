@@ -5,36 +5,13 @@ import (
 	"os"
 	"strings"
 
+	"slog/help"
+	"slog/pargs"
 	"slog/runner"
 
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 )
-
-func progName() string {
-	if len(os.Args) <= 1 {
-		return ""
-	} else {
-		return os.Args[1]
-	}
-}
-
-func progArgs() []string {
-	ret := make([]string, 0)
-	if len(os.Args) <= 1 {
-		return nil
-	} else {
-		for i, a := range os.Args {
-			if i <= 1 {
-				continue
-			} else {
-				ret = append(ret, a)
-
-			}
-		}
-		return ret
-	}
-}
 
 // REM: model
 type model struct {
@@ -61,12 +38,17 @@ func newModel() model {
 	return m
 }
 
-func (m model) Init() tea.Cmd {
-	return tea.Batch(
-		runner.Run(progName(), progArgs(), m.fromProg, m.toProg),
-		runner.WaitforProgResponse(m.fromProg),
-		m.spin.Tick,
-	)
+func (m model) Init() tea.Cmd { // handle debug in init ???
+	if pargs.ValidProg() {
+		return tea.Batch(
+			runner.Run(pargs.ProgName(), pargs.ProgArgs(), m.fromProg, m.toProg),
+			runner.WaitforProgResponse(m.fromProg),
+			m.spin.Tick,
+		)
+	} else {
+		return m.spin.Tick // something like a nil msg ?
+
+	}
 }
 
 // REM: update
@@ -78,8 +60,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if !m.done { // while prog is running
 		m.result = "Prog is running: press ^C to kill\n"
 		m.result += "args are\n:"
-		m.result += strings.Join(progArgs(), " ")
+		m.result += strings.Join(pargs.ProgArgs(), " ")
 		m.result += "\n--------------------------\n"
+	}
+	if !pargs.ValidProg() {
+		m.done = true
+		m.result = help.Message()
+		m.result += "\nPress q or ^C or esc to exit."
 	}
 
 	switch msg := msg.(type) {
