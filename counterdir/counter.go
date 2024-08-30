@@ -20,6 +20,7 @@ func main() {
 			nums = n
 		} else {
 			fmt.Println("counter n,err", n, err)
+			return
 		}
 	}
 
@@ -30,6 +31,7 @@ func main() {
 			delay = d
 		} else {
 			fmt.Println("counter d,err", d, err)
+			return
 		}
 	}
 

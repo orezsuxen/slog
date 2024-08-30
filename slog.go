@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"slog/runner"
 
@@ -10,6 +11,32 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
+func progName() string {
+	if len(os.Args) <= 1 {
+		return ""
+	} else {
+		return os.Args[1]
+	}
+}
+
+func progArgs() []string {
+	ret := make([]string, 0)
+	if len(os.Args) <= 1 {
+		return nil
+	} else {
+		for i, a := range os.Args {
+			if i <= 1 {
+				continue
+			} else {
+				ret = append(ret, a)
+
+			}
+		}
+		return ret
+	}
+}
+
+// REM: model
 type model struct {
 	done bool
 
@@ -36,7 +63,7 @@ func newModel() model {
 
 func (m model) Init() tea.Cmd {
 	return tea.Batch(
-		runner.Run("./counterdir/counter", []string{"1000", "10"}, m.fromProg, m.toProg),
+		runner.Run(progName(), progArgs(), m.fromProg, m.toProg),
 		runner.WaitforProgResponse(m.fromProg),
 		m.spin.Tick,
 	)
@@ -50,6 +77,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	if !m.done { // while prog is running
 		m.result = "Prog is running: press ^C to kill\n"
+		m.result += "args are\n:"
+		m.result += strings.Join(progArgs(), " ")
+		m.result += "\n--------------------------\n"
 	}
 
 	switch msg := msg.(type) {
