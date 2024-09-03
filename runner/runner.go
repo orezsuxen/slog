@@ -3,7 +3,6 @@ package runner
 import (
 	"bufio"
 	"io"
-	"os"
 	"os/exec"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -35,7 +34,13 @@ func TerminateProg(toProg chan bool) tea.Cmd {
 	}
 }
 
-func Run(progName string, progArgs []string, fromProg chan string, toProg chan bool) tea.Cmd {
+func Run(
+	progName string,
+	progArgs []string,
+	fromProg chan string,
+	toProg chan bool,
+	progIn io.Reader,
+) tea.Cmd {
 	return func() tea.Msg {
 		//setup
 		cmd := exec.Command(progName, progArgs...)
@@ -43,7 +48,7 @@ func Run(progName string, progArgs []string, fromProg chan string, toProg chan b
 		if err != nil {
 			return ProgErrMsg{err}
 		}
-		cmd.Stdin = os.Stdin
+		cmd.Stdin = progIn
 		//execution
 		if err := cmd.Start(); err != nil {
 			return ProgErrMsg{err}
@@ -54,8 +59,9 @@ func Run(progName string, progArgs []string, fromProg chan string, toProg chan b
 			select {
 			case <-toProg:
 				cmd.Process.Kill()
+
 			default:
-				line, _, err := buf.ReadLine() //TODO: should be read bytes
+				line, _, err := buf.ReadLine()
 				if err == io.EOF || !CheckRunning(cmd) {
 					return ProgDoneMsg{}
 				}

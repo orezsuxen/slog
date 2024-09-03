@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -20,8 +21,10 @@ type model struct {
 	fromProg chan string
 	toProg   chan bool
 
-	result     string
-	progResult string
+	result      string
+	progResult  string
+	progInRead  io.Reader
+	progInWrite io.Writer
 
 	spin spinner.Model
 }
@@ -29,10 +32,13 @@ type model struct {
 func newModel() model {
 	s := spinner.New()
 	s.Spinner = spinner.Line
+	r, w := io.Pipe()
 	m := model{
-		fromProg: make(chan string),
-		toProg:   make(chan bool),
-		spin:     s,
+		fromProg:    make(chan string),
+		toProg:      make(chan bool),
+		spin:        s,
+		progInRead:  r,
+		progInWrite: w,
 		// result: new(string),
 	}
 	return m
@@ -41,7 +47,13 @@ func newModel() model {
 func (m model) Init() tea.Cmd { // handle debug in init ???
 	if pargs.ValidProg() {
 		return tea.Batch(
-			runner.Run(pargs.ProgName(), pargs.ProgArgs(), m.fromProg, m.toProg),
+			runner.Run(
+				pargs.ProgName(),
+				pargs.ProgArgs(),
+				m.fromProg,
+				m.toProg,
+				m.progInRead,
+			),
 			runner.WaitforProgResponse(m.fromProg),
 			m.spin.Tick,
 		)
@@ -62,6 +74,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.result += "args are\n:"
 		m.result += strings.Join(pargs.ProgArgs(), " ")
 		m.result += "\n--------------------------\n"
+	} else {
+		m.result = fmt.Sprint("Prog execution Done.\nPress q or ^C or esc to exit.")
 	}
 	if !pargs.ValidProg() {
 		m.done = true
@@ -79,8 +93,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			switch msg.String() {
 			case "ctrl+c":
+				m.result += "KILLING PROG!!!"
 				cmds = append(cmds, runner.TerminateProg(m.toProg))
-
+				cmds = append(cmds, runner.WaitforProgResponse(m.fromProg))
+				// m.done = true
+			default:
+				bf := make([]byte, 4)
+				bf[0] = byte(msg.Type & 0xFF)
+				if bf[0] == 255 && msg.Runes != nil {
+					bf[0] = byte(msg.Runes[0] & 0xFF)
+					bf[1] = byte(msg.Runes[0] & 0xFF00)
+				}
+				m.progInWrite.Write(bf)
+				cmds = append(cmds, runner.WaitforProgResponse(m.fromProg))
 			}
 		}
 	case runner.ProgMsg:
@@ -93,7 +118,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case runner.ProgDoneMsg:
 		m.done = true
-		m.result = fmt.Sprint("Prog execution Done.\nPress q or ^C or esc to exit.")
+		// cmds = append(cmds, runner.WaitforProgResponse(m.fromProg))
+
 	default:
 		m.spin, cmd = m.spin.Update(msg)
 		cmds = append(cmds, cmd)
