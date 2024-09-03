@@ -25,6 +25,7 @@ type model struct {
 	progResult  string
 	progInRead  io.Reader
 	progInWrite io.Writer
+	//TODO: something like current state?
 
 	spin spinner.Model
 }
@@ -70,16 +71,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 
 	if !m.done { // while prog is running
-		m.result = "Prog is running: press ^C to kill\n"
-		m.result += "args are\n:"
+		m.result = "Running: [" + pargs.ProgName() + "]"
+		m.result += "\nwith args: "
 		m.result += strings.Join(pargs.ProgArgs(), " ")
-		m.result += "\n--------------------------\n"
-	} else {
-		m.result = fmt.Sprint("Prog execution Done.\nPress q or ^C or esc to exit.")
+		m.result += "\n Press ^C to kill"
 	}
 	if !pargs.ValidProg() {
 		m.done = true
-		m.result = help.Message()
+		m.result = "Error: "
+		m.result += help.Message()
 		m.result += "\nPress q or ^C or esc to exit."
 	}
 
@@ -93,7 +93,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			switch msg.String() {
 			case "ctrl+c":
-				m.result += "KILLING PROG!!!"
+				m.result += "=== KILL REQUEST RECEIVED ==="
 				cmds = append(cmds, runner.TerminateProg(m.toProg))
 				cmds = append(cmds, runner.WaitforProgResponse(m.fromProg))
 				// m.done = true
@@ -114,12 +114,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case runner.ProgErrMsg:
 		m.done = true
-		m.result = fmt.Sprintf("ERROR slog:", msg.Err.Error()) //TODO: error handling
+		m.result = fmt.Sprintf("Error executing: [", pargs.ProgName(), "] ErrorMsg: ", msg.Err.Error()) //TODO: error handling
 
 	case runner.ProgDoneMsg:
 		m.done = true
-		// cmds = append(cmds, runner.WaitforProgResponse(m.fromProg))
-
+		m.result = fmt.Sprint("Execution of [", pargs.ProgName(), "] Done.\nPress q or ^C or esc to exit.")
 	default:
 		m.spin, cmd = m.spin.Update(msg)
 		cmds = append(cmds, cmd)
@@ -131,12 +130,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // REM: view
 func (m model) View() string {
+	ret := ""
 	if !m.done {
-		m.result += m.spin.View()
+		ret += "["
+		ret += m.spin.View()
+		ret += "]"
 	}
-	m.result += "\n"
-	m.result += m.progResult
-	return m.result
+	ret += m.result
+	ret += "\n--------------------------\n"
+	ret += m.progResult
+	return ret
 }
 
 // REM: main

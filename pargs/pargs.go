@@ -48,10 +48,10 @@ func ValidProg() bool {
 }
 
 func ProgName() string {
-	if len(os.Args) <= 1 {
-		return ""
-	} else {
+	if CheckArgs() == Ok {
 		return os.Args[1]
+	} else {
+		return ""
 	}
 }
 
