@@ -34,6 +34,20 @@ func TerminateProg(toProg chan bool) tea.Cmd {
 	}
 }
 
+func readInput(cmd *exec.Cmd, out io.ReadCloser, outChan chan string, msgChan chan tea.Msg) {
+	buf := bufio.NewReader(out)
+	for {
+		line, _, err := buf.ReadLine()
+		if err == io.EOF || !CheckRunning(cmd) {
+			msgChan <- ProgDoneMsg{}
+		}
+		if err != nil {
+			msgChan <- ProgErrMsg{err}
+		}
+		outChan <- string(line)
+	}
+}
+
 func Run(
 	progName string,
 	progArgs []string,
@@ -54,23 +68,19 @@ func Run(
 			return ProgErrMsg{err}
 		}
 		//read prog output
-		buf := bufio.NewReader(out)
+		msgChan := make(chan tea.Msg)
+		outputChan := make(chan string)
+		go readInput(cmd, out, outputChan, msgChan)
+		//send msgs back
 		for {
 			select {
 			case <-toProg:
 				cmd.Process.Kill()
-
-			default:
-				line, _, err := buf.ReadLine()
-				if err == io.EOF || !CheckRunning(cmd) {
-					return ProgDoneMsg{}
-				}
-				if err != nil {
-					return ProgErrMsg{err}
-				}
-				fromProg <- string(line)
+			case outString := <-outputChan:
+				fromProg <- outString
+			case retMsg := <-msgChan:
+				return retMsg
 			}
-
 		}
 	}
 }
