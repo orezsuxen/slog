@@ -106,7 +106,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				bf[0] = byte(msg.Type & 0xFF)
 				if bf[0] == 255 && msg.Runes != nil {
 					bf[0] = byte(msg.Runes[0] & 0xFF)
-					bf[1] = byte(msg.Runes[0] & 0xFF00)
+					// bf[1] = byte(msg.Runes[0] & 0xFF00)
 				}
 				m.progInWrite.Write(bf)
 				cmds = append(cmds, runner.WaitforProgResponse(m.fromProg))
@@ -135,14 +135,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // REM: view
 func (m model) View() string {
-	ret := ""
+	ret := "\n"
 	if !m.done {
 		ret += "["
 		ret += m.spin.View()
 		ret += "]"
 	}
 	ret += m.result
-	ret += "\n=-=-=-=-=\n"
+	ret += "\n===================\n"
 	ret += m.messages.Display(10)
 	return ret
 }
