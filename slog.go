@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	"slog/collect"
 	"slog/help"
 	"slog/pargs"
 	"slog/runner"
@@ -27,6 +28,8 @@ type model struct {
 	progInWrite io.Writer
 	//TODO: something like current state?
 
+	messages collect.Collector
+
 	spin spinner.Model
 }
 
@@ -40,6 +43,7 @@ func newModel() model {
 		spin:        s,
 		progInRead:  r,
 		progInWrite: w,
+		messages:    collect.New(10),
 		// result: new(string),
 	}
 	return m
@@ -93,7 +97,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			switch msg.String() {
 			case "ctrl+c":
-				m.result += "=== KILL REQUEST RECEIVED ==="
+				// m.result += "=== KILL REQUEST RECEIVED ===" //DEBUG:
 				cmds = append(cmds, runner.TerminateProg(m.toProg))
 				cmds = append(cmds, runner.WaitforProgResponse(m.fromProg))
 				// m.done = true
@@ -109,7 +113,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 	case runner.ProgMsg:
-		m.progResult = string(msg)
+		// m.progResult = string(msg)
+		m.messages.Store(string(msg))
 		cmds = append(cmds, runner.WaitforProgResponse(m.fromProg))
 
 	case runner.ProgErrMsg:
@@ -137,8 +142,8 @@ func (m model) View() string {
 		ret += "]"
 	}
 	ret += m.result
-	ret += "\n--------------------------\n"
-	ret += m.progResult
+	ret += "\n=-=-=-=-=\n"
+	ret += m.messages.Display(10)
 	return ret
 }
 
